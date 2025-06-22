@@ -2,6 +2,14 @@ name: oneplus_13
 on:
   workflow_dispatch:
     inputs:
+      KERNEL_SUFFIX:
+        description: '内核名称修改(可改中文和emoji)'
+        required: true
+        default: '-android15-8-g013ec21bba94-abogki383916444-4k'
+      KERNEL_TIME:
+       description: "内核构建日期更改(默认为原厂)"
+       required: true
+       default: 'Tue Dec 17 23:36:49 UTC 2024'
       enable_feature_x:
        description: "启用kpm"
        required: false
@@ -17,7 +25,6 @@ on:
        required: false
        default: true
        type: boolean
-
        
 
 
@@ -45,32 +52,18 @@ jobs:
         run: |
          git config --global user.name "Q1udaoyu"
          git config --global user.email "sucisama2888@gmail.com"
+
       - name: Install dependencies
         run: |
-          sudo apt update
-          # 检查并安装必要组件
-          for pkg in python3 git curl ccache; do
-            if ! command -v $pkg &> /dev/null; then
-              sudo apt install -y $pkg
-            fi
-          done
-          sudo ln -s /usr/bin/ccache /usr/local/bin/ccache-clang
-          sudo ln -s /usr/bin/ccache /usr/local/bin/ccache-clang++
-
-      - name: Configure ccache
-        run: |
-          ccache --clear
-          ccache --set-config=max_size=8G
-          ccache --set-config=compression=true
-          ccache --set-config=compression_level=6
-          ccache -s
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install -y python3 git curl
+          sudo apt install -y python3 git curl ccache
 
       - name: Restore ccache
         uses: actions/cache@v3
-        id: restore-ccache
         with:
           path: /home/runner/.ccache
-          key: ccache-${{ runner.os }}-${{ hashFiles('kernel_workspace/kernel_platform/common/build.config.gki', 'kernel_workspace/kernel_platform/common/Makefile') }}
+          key: ccache-${{ runner.os }}-${{ github.ref }}
           restore-keys: |
             ccache-${{ runner.os }}-
 
@@ -105,16 +98,12 @@ jobs:
            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android15-6.6
            git clone https://github.com/Xiaomichael/kernel_patches.git
            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
-
+    
            cd kernel_platform        
            cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
            cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
            cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-           if [ "${{ github.event.inputs.enable_feature_y }}" = "true"]; then
-            cp ../kernel_patches/001-lz4.patch ./common/
-            cp ../kernel_patches/lz4armv8.S ./common/lib
-            cp ../kernel_patches/002-zstd.patch ./common/
-           fi
+           
            # Apply patches
            cd ./common
 
@@ -124,10 +113,6 @@ jobs:
            patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
            cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
            patch -p1 -F 3 < syscall_hooks.patch
-           if [ "${{ github.event.inputs.enable_feature_y }}" = "true" ]; then
-            git apply -p1 < 001-lz4.patch || true
-            patch -p1 < 002-zstd.patch || true
-           fi
            echo "完成"
       
       - name: Apply HMBird GKI patch
@@ -141,8 +126,7 @@ jobs:
          cd ../../../
          git add -A
          git commit -m "Add HMBird GKI patch" || true
-
-
+           
       - name: Add SUSFS Configuration Settings
         run: |
           cd kernel_workspace/kernel_platform
@@ -168,12 +152,13 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
+
           echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CRYPTO_LZ4=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CRYPTO_LZ4kd=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
+
           # Add BBR
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -204,8 +189,8 @@ jobs:
         run: |
          cd kernel_workspace/kernel_platform
          sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
-         sudo sed -i 's/-4k/-android15-TG@qdykernel/g' ./common/arch/arm64/configs/gki_defconfig
-        
+         sudo sed -i 's/-4k/${{ github.event.inputs.KERNEL_SUFFIX }}/g' ./common/arch/arm64/configs/gki_defconfig
+
       - name: Add sched_ext
         if: ${{inputs.enable_feature_z }}
         run: |
@@ -213,16 +198,15 @@ jobs:
          git clone https://github.com/HanKuCha/sched_ext.git
          cp -r ./sched_ext/* ./common/kernel/sched
          rm -rf ./sched_ext/.git
-         cd common/kernel/sched  
+         cd common/kernel/sched
 
       - name: Build Kernel
         run: |
-          export KBUILD_BUILD_TIMESTAMP="Tue Dec 17 23:36:49 UTC 2024"
+          export KBUILD_BUILD_TIMESTAMP="${{ github.event.inputs.KERNEL_TIME }}"
           export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
           export PATH="/usr/lib/ccache:$PATH"
           sudo apt install libelf-dev
           cd kernel_workspace/kernel_platform/common
-          
           # Step 1: 生成配置
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
@@ -234,19 +218,7 @@ jobs:
             CC=clang RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
             PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
             LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 Image
-
-          
-          echo "=== CCACHE AFTER BUILD ==="
-          ccache -s
-          echo "Cache hit rate: $(ccache -s | grep 'cache hit rate')"
-
-      - name: Save ccache
-        if: always()
-        uses: actions/cache@v3
-        with:
-          path: /home/runner/.ccache
-          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
-          
+            
       - name: Apply Linux Patch
         run: |
          cd kernel_workspace/kernel_platform/common/out/arch/arm64/boot
@@ -266,5 +238,5 @@ jobs:
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
         with:
-         name: AnyKernel3_${{ env.KSUVER }}_oneplus_13_SuKiSu
+         name: AnyKernel_${{ env.KSUVER }}_oneplus_13_SuKiSU
          path: ./AnyKernel3/*
