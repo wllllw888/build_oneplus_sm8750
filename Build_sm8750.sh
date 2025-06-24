@@ -15,7 +15,7 @@ error() {
 }
 
 # 参数设置
-KERNEL_SUFFIX="-android15-TG@qdykernel"
+KERNEL_SUFFIX="-android15-8-g013ec21bba94-abogki383916444-4k"
 ENABLE_KPM=true
 ENABLE_LZ4KD=true
 
@@ -55,11 +55,8 @@ esac
 
 # 自定义补丁
 
-if [[ "$DEVICE_NAME" == "oneplus_pad_2_pro" ]]; then
-    KERNEL_SUFFIX="-TG@qdykernel"
-    read -p "输入内核名称修改(可改中文和emoji 回车默认): " input_suffix
+read -p "输入内核名称修改(可改中文和emoji 回车默认): " input_suffix
 [ -n "$input_suffix" ] && KERNEL_SUFFIX="$input_suffix"
-fi
 
 read -p "输入内核构建日期更改(回车默认为原厂) : " input_time
 [ -n "$input_time" ] && KERNEL_TIME="$input_time"
@@ -101,7 +98,7 @@ cd "$WORKSPACE" || error "无法进入工作目录"
 
 # 检查并安装依赖
 info "检查并安装依赖..."
-DEPS=(python3 git curl ccache flex bison libssl-dev libelf-dev bc zip)
+DEPS=(make python3 git curl ccache flex bison libssl-dev libelf-dev bc zip)
 MISSING_DEPS=()
 
 for pkg in "${DEPS[@]}"; do
